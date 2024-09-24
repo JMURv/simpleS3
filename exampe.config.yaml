@@ -1,0 +1,22 @@
+db: # "pg" or "mongo"
+port: 8080
+
+postgres:
+  host: "localhost"
+  port: 5432
+  user: "postgres"
+  password: "password"
+  database: "db_name"
+  field: "src"
+  tables: [
+    "table_1",
+    "table_2",
+  ]
+
+mongo:
+  URI: "mongodb+srv://..."
+  name: "db_name"
+  collections: [
+    "collection_1",
+    "collection_2",
+  ]
