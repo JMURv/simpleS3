@@ -27,6 +27,5 @@ jobs:
           PASSWORD: ${{ secrets.PASSWORD }}
           IMAGE_NAME: ${{ secrets.IMAGE_NAME }}
         run: |
-          cd ./backend
           docker build --no-cache -t ${USERNAME}/${IMAGE_NAME}:latest .
           docker push ${USERNAME}/${IMAGE_NAME}:latest
