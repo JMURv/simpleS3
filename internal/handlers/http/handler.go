@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -26,7 +27,8 @@ func New(port string) *Handler {
 
 func (h *Handler) Start() {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/upload", h.UploadFile)
+	mux.HandleFunc("/upload", h.uploadFile)
+	mux.HandleFunc("/stream/uploads/", h.streamImage)
 	mux.Handle("/uploads/", http.StripPrefix("/uploads", http.FileServer(http.Dir(consts.SavePath))))
 
 	h.server = &http.Server{
@@ -47,7 +49,42 @@ func (h *Handler) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) streamImage(w http.ResponseWriter, r *http.Request) {
+	imageName := r.URL.Path[len("/stream/uploads/"):]
+	filePath := path.Join(consts.SavePath, imageName)
+
+	file, err := os.Open(filePath)
+	if err != nil {
+		http.Error(w, "File not found", http.StatusNotFound)
+		return
+	}
+	defer file.Close()
+
+	w.Header().Set("Content-Type", "image/jpeg")
+	w.Header().Set("Transfer-Encoding", "chunked")
+
+	buffer := make([]byte, 1024*32) // 32KB chunks
+	for {
+		n, err := file.Read(buffer)
+		if err != nil && err != io.EOF {
+			http.Error(w, "Error reading file", http.StatusInternalServerError)
+			return
+		}
+		if n == 0 {
+			break
+		}
+
+		if _, err := w.Write(buffer[:n]); err != nil {
+			log.Println("Error writing chunk:", err)
+			return
+		}
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+	}
+}
+
+func (h *Handler) uploadFile(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Saving new file...")
 	if r.Method != http.MethodPost {
 		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
