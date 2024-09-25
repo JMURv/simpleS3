@@ -63,6 +63,7 @@ func (h *Handler) streamImage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "image/jpeg")
 	w.Header().Set("Transfer-Encoding", "chunked")
 
+	log.Println("Streaming image: ", imageName)
 	buffer := make([]byte, 1024*32) // 32KB chunks
 	for {
 		n, err := file.Read(buffer)
