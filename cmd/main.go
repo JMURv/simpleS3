@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	handler "github.com/JMURv/media-server/internal/handlers/http"
+	handler "github.com/JMURv/media-server/internal/hdl/http"
 	cfg "github.com/JMURv/media-server/pkg/config"
 	"log"
 	"os"

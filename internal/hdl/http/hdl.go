@@ -3,7 +3,6 @@ package http
 import (
 	"context"
 	"fmt"
-	"github.com/JMURv/media-server/internal/handlers"
 	"github.com/JMURv/media-server/pkg/config"
 	utils "github.com/JMURv/media-server/pkg/utils/http"
 	"io"
@@ -60,7 +59,7 @@ func (h *Handler) stream(w http.ResponseWriter, r *http.Request) {
 
 	file, err := os.Open(path)
 	if err != nil {
-		utils.ErrResponse(w, http.StatusNotFound, handlers.ErrRetrievingFile)
+		utils.ErrResponse(w, http.StatusNotFound, ErrRetrievingFile)
 		return
 	}
 	defer file.Close()
@@ -77,7 +76,7 @@ func (h *Handler) stream(w http.ResponseWriter, r *http.Request) {
 	case ".webm":
 		w.Header().Set("Content-Type", "video/webm")
 	default:
-		utils.ErrResponse(w, http.StatusUnsupportedMediaType, handlers.ErrUnsupportedMediaType)
+		utils.ErrResponse(w, http.StatusUnsupportedMediaType, ErrUnsupportedMediaType)
 	}
 	w.Header().Set("Transfer-Encoding", "chunked")
 
@@ -86,7 +85,7 @@ func (h *Handler) stream(w http.ResponseWriter, r *http.Request) {
 	for {
 		n, err := file.Read(buffer)
 		if err != nil && err != io.EOF {
-			utils.ErrResponse(w, http.StatusInternalServerError, handlers.ErrInternal)
+			utils.ErrResponse(w, http.StatusInternalServerError, ErrInternal)
 			return
 		}
 		if n == 0 {
@@ -108,7 +107,7 @@ func (h *Handler) listFiles(w http.ResponseWriter, r *http.Request) {
 	page, size := utils.ParsePaginationParams(r, h.config.DefaultPage, h.config.DefaultSize)
 	files, err := os.ReadDir(h.savePath)
 	if err != nil {
-		utils.ErrResponse(w, http.StatusInternalServerError, handlers.ErrReadingDir)
+		utils.ErrResponse(w, http.StatusInternalServerError, ErrReadingDir)
 		return
 	}
 
@@ -143,37 +142,37 @@ func (h *Handler) listFiles(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) createFile(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		utils.ErrResponse(w, http.StatusMethodNotAllowed, handlers.ErrParsingForm)
+		utils.ErrResponse(w, http.StatusMethodNotAllowed, ErrParsingForm)
 		return
 	}
 
 	if err := r.ParseMultipartForm(h.config.MaxUploadSize); err != nil {
-		utils.ErrResponse(w, http.StatusBadRequest, handlers.ErrFileTooBig)
+		utils.ErrResponse(w, http.StatusBadRequest, ErrFileTooBig)
 		return
 	}
 
 	file, handler, err := r.FormFile("file")
 	if err != nil {
-		utils.ErrResponse(w, http.StatusBadRequest, handlers.ErrRetrievingFile)
+		utils.ErrResponse(w, http.StatusBadRequest, ErrRetrievingFile)
 		return
 	}
 	defer file.Close()
 
 	dstPath := filepath.Join(h.savePath, handler.Filename)
 	if _, err := os.Stat(dstPath); err == nil {
-		utils.ErrResponse(w, http.StatusConflict, handlers.ErrAlreadyExists)
+		utils.ErrResponse(w, http.StatusConflict, ErrAlreadyExists)
 		return
 	}
 
 	dst, err := os.Create(dstPath)
 	if err != nil {
-		utils.ErrResponse(w, http.StatusInternalServerError, handlers.ErrInternal)
+		utils.ErrResponse(w, http.StatusInternalServerError, ErrInternal)
 		return
 	}
 	defer dst.Close()
 
 	if _, err := io.Copy(dst, file); err != nil {
-		utils.ErrResponse(w, http.StatusInternalServerError, handlers.ErrInternal)
+		utils.ErrResponse(w, http.StatusInternalServerError, ErrInternal)
 		return
 	}
 
@@ -184,13 +183,13 @@ func (h *Handler) createFile(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) deleteFile(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
-		utils.ErrResponse(w, http.StatusMethodNotAllowed, handlers.ErrInvalidReqMethod)
+		utils.ErrResponse(w, http.StatusMethodNotAllowed, ErrInvalidReqMethod)
 		return
 	}
 
 	filename := r.URL.Query().Get("filename")
 	if filename == "" {
-		utils.ErrResponse(w, http.StatusBadRequest, handlers.ErrFilenameNotProvided)
+		utils.ErrResponse(w, http.StatusBadRequest, ErrFilenameNotProvided)
 		return
 	}
 
