@@ -3,17 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/JMURv/media-server/internal/cleaner"
-	mongoCleaner "github.com/JMURv/media-server/internal/cleaner/mongo"
-	pgCleaner "github.com/JMURv/media-server/internal/cleaner/pg"
 	handler "github.com/JMURv/media-server/internal/handlers/http"
 	cfg "github.com/JMURv/media-server/pkg/config"
-	"github.com/JMURv/media-server/pkg/consts"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 )
 
 const configPath = "local.config.yaml"
@@ -33,23 +28,6 @@ func handleGracefulShutdown(ctx context.Context, cancel context.CancelFunc, h *h
 	os.Exit(0)
 }
 
-func startCleanerScheduler(ctx context.Context, c cleaner.Cleaner, interval time.Duration) {
-	c.Clean(ctx)
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			log.Println("Running scheduled cleaner...")
-			c.Clean(ctx)
-		case <-ctx.Done():
-			log.Println("Cleaner scheduler stopped.")
-			return
-		}
-	}
-}
-
 func main() {
 	defer func() {
 		if err := recover(); err != nil {
@@ -58,27 +36,17 @@ func main() {
 		}
 	}()
 
-	ctx, cancel := context.WithCancel(context.Background())
 	conf := cfg.MustLoad(configPath)
-	if _, err := os.Stat(consts.SavePath); os.IsNotExist(err) {
-		err = os.MkdirAll(consts.SavePath, os.ModePerm)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	if _, err := os.Stat(conf.SavePath); os.IsNotExist(err) {
+		err = os.MkdirAll(conf.SavePath, os.ModePerm)
 		if err != nil {
 			log.Fatalf("Error creating save path: %s\n", err)
 		}
 	}
 
-	var c cleaner.Cleaner
-	switch conf.Db {
-	case "pg":
-		c = pgCleaner.New(conf)
-	case "mongo":
-		c = mongoCleaner.New(conf)
-	default:
-		log.Fatalf("Invalid database type: %s\n", conf.Db)
-	}
-
-	h := handler.New(fmt.Sprintf(":%v", conf.Port))
+	h := handler.New(fmt.Sprintf(":%v", conf.Port), conf.SavePath, conf.HTTP)
 	go handleGracefulShutdown(ctx, cancel, h)
-	go startCleanerScheduler(ctx, c, 24*time.Hour)
 	h.Start()
 }

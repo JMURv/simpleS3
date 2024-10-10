@@ -1,22 +1,8 @@
-db: # "pg" or "mongo"
 port: 8080
+savePath: "uploads"
 
-postgres:
-  host: "localhost"
-  port: 5432
-  user: "postgres"
-  password: "password"
-  database: "db_name"
-  field: "src"
-  tables: [
-    "table_1",
-    "table_2",
-  ]
-
-mongo:
-  URI: "mongodb+srv://..."
-  name: "db_name"
-  collections: [
-    "collection_1",
-    "collection_2",
-  ]
+http:
+  maxStreamBuffer: 32768 # 32KB chunks
+  maxUploadSize: 10485760 # 10 MB
+  defaultPage: 1
+  defaultSize: 40

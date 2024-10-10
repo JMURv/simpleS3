@@ -3,40 +3,45 @@ package http
 import (
 	"context"
 	"fmt"
-	"github.com/JMURv/media-server/pkg/consts"
+	"github.com/JMURv/media-server/internal/handlers"
+	"github.com/JMURv/media-server/pkg/config"
+	utils "github.com/JMURv/media-server/pkg/utils/http"
 	"io"
 	"log"
 	"net/http"
 	"os"
-	"path"
 	"path/filepath"
-	"strings"
-	"time"
 )
 
 type Handler struct {
-	port   string
-	server *http.Server
+	port     string
+	server   *http.Server
+	savePath string
+	config   *config.HTTPConfig
 }
 
-func New(port string) *Handler {
+func New(port string, savePath string, config *config.HTTPConfig) *Handler {
 	return &Handler{
-		port: port,
+		port:     port,
+		savePath: savePath,
+		config:   config,
 	}
 }
 
 func (h *Handler) Start() {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/upload", h.uploadFile)
+	mux.HandleFunc("/list", h.listFiles)
+	mux.HandleFunc("/upload", h.createFile)
+	mux.HandleFunc("/delete", h.deleteFile)
 	mux.HandleFunc("/stream/uploads/", h.streamImage)
-	mux.Handle("/uploads/", http.StripPrefix("/uploads", http.FileServer(http.Dir(consts.SavePath))))
+	mux.Handle("/uploads/", http.StripPrefix("/uploads", http.FileServer(http.Dir(h.savePath))))
 
 	h.server = &http.Server{
 		Addr:    h.port,
 		Handler: mux,
 	}
 
-	fmt.Printf("Server is running on port %v\n", h.port)
+	log.Printf("Server is running on port %v\n", h.port)
 	if err := h.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("Error starting server: %s\n", err)
 	}
@@ -51,7 +56,7 @@ func (h *Handler) Shutdown(ctx context.Context) error {
 
 func (h *Handler) streamImage(w http.ResponseWriter, r *http.Request) {
 	imageName := r.URL.Path[len("/stream/uploads/"):]
-	filePath := path.Join(consts.SavePath, imageName)
+	filePath := filepath.Join(h.savePath, imageName)
 
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -64,7 +69,7 @@ func (h *Handler) streamImage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Transfer-Encoding", "chunked")
 
 	log.Println("Streaming image: ", imageName)
-	buffer := make([]byte, 1024*32) // 32KB chunks
+	buffer := make([]byte, h.config.MaxStreamBuffer)
 	for {
 		n, err := file.Read(buffer)
 		if err != nil && err != io.EOF {
@@ -79,53 +84,114 @@ func (h *Handler) streamImage(w http.ResponseWriter, r *http.Request) {
 			log.Println("Error writing chunk:", err)
 			return
 		}
+
 		if flusher, ok := w.(http.Flusher); ok {
 			flusher.Flush()
 		}
 	}
 }
 
-func (h *Handler) uploadFile(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Saving new file...")
-	if r.Method != http.MethodPost {
-		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+func (h *Handler) listFiles(w http.ResponseWriter, r *http.Request) {
+	page, size := utils.ParsePaginationParams(r, h.config.DefaultPage, h.config.DefaultSize)
+	files, err := os.ReadDir(h.savePath)
+	if err != nil {
+		utils.ErrResponse(w, http.StatusInternalServerError, handlers.ErrReadingDir)
 		return
 	}
 
-	err := r.ParseMultipartForm(10 << 20) // 10 MB
-	if err != nil {
-		http.Error(w, "Error parsing form", http.StatusBadRequest)
+	count := len(files)
+	start := (page - 1) * size
+	end := start + size
+	if start > count {
+		start = count
+	}
+	if end > count {
+		end = count
+	}
+
+	res := make([]string, 0, len(files))
+	for _, file := range files[start:end] {
+		if !file.IsDir() {
+			res = append(res, fmt.Sprintf("/%s", filepath.Join(h.savePath, file.Name())))
+		}
+	}
+
+	totalPages := (count + size - 1) / size
+	utils.SuccessPaginatedResponse(
+		w, http.StatusOK, utils.PaginatedResponse{
+			Data:        res,
+			Count:       count,
+			TotalPages:  totalPages,
+			CurrentPage: page,
+			HasNextPage: page < totalPages,
+		},
+	)
+}
+
+func (h *Handler) createFile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		utils.ErrResponse(w, http.StatusMethodNotAllowed, handlers.ErrParsingForm)
+		return
+	}
+
+	if err := r.ParseMultipartForm(h.config.MaxUploadSize); err != nil {
+		utils.ErrResponse(w, http.StatusBadRequest, handlers.ErrFileTooBig)
 		return
 	}
 
 	file, handler, err := r.FormFile("file")
 	if err != nil {
-		http.Error(w, "Error retrieving the file", http.StatusBadRequest)
+		utils.ErrResponse(w, http.StatusBadRequest, handlers.ErrRetrievingFile)
 		return
 	}
 	defer file.Close()
 
-	filename := fmt.Sprintf(
-		"%s%d%s",
-		strings.Split(filepath.Base(handler.Filename), ".")[0],
-		time.Now().Unix(),
-		filepath.Ext(handler.Filename),
-	)
-	dst, err := os.Create(filepath.Join(consts.SavePath, filename))
+	dstPath := filepath.Join(h.savePath, handler.Filename)
+	if _, err := os.Stat(dstPath); err == nil {
+		utils.ErrResponse(w, http.StatusConflict, handlers.ErrAlreadyExists)
+		return
+	}
+
+	dst, err := os.Create(dstPath)
 	if err != nil {
-		http.Error(w, "Error saving the file", http.StatusInternalServerError)
+		utils.ErrResponse(w, http.StatusInternalServerError, handlers.ErrInternal)
 		return
 	}
 	defer dst.Close()
 
 	if _, err := io.Copy(dst, file); err != nil {
-		http.Error(w, "Error saving the file", http.StatusInternalServerError)
+		utils.ErrResponse(w, http.StatusInternalServerError, handlers.ErrInternal)
 		return
 	}
 
-	fileURL := fmt.Sprintf("/uploads/%s", filename)
-	fmt.Printf("File saved: %s\n", fileURL)
+	fileURL := fmt.Sprintf("/%s", dstPath)
+	log.Printf("File saved: %s\n", fileURL)
+	utils.SuccessResponse(w, http.StatusCreated, fileURL)
+}
 
-	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, `{"url": "%s"}`, fileURL)
+func (h *Handler) deleteFile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		utils.ErrResponse(w, http.StatusMethodNotAllowed, handlers.ErrInvalidReqMethod)
+		return
+	}
+
+	filename := r.URL.Query().Get("filename")
+	if filename == "" {
+		utils.ErrResponse(w, http.StatusBadRequest, handlers.ErrFilenameNotProvided)
+		return
+	}
+
+	path := filepath.Join(h.savePath, filename)
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		utils.ErrResponse(w, http.StatusNotFound, err)
+		return
+	}
+
+	if err := os.Remove(path); err != nil {
+		utils.ErrResponse(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	log.Printf("File %s deleted successfully\n", filename)
+	utils.SuccessResponse(w, http.StatusNoContent, "OK")
 }

@@ -6,26 +6,16 @@ import (
 )
 
 type Config struct {
-	Db       string         `yaml:"db"`
-	Port     int            `yaml:"port" env-default:"8080"`
-	Mongo    MongoConfig    `yaml:"mongo"`
-	Postgres PostgresConfig `yaml:"postgres"`
+	Port     int         `yaml:"port" env-default:"8080"`
+	SavePath string      `yaml:"savePath" env-default:"uploads"`
+	HTTP     *HTTPConfig `yaml:"app"`
 }
 
-type PostgresConfig struct {
-	Host     string   `yaml:"host" env-default:"localhost"`
-	Port     int      `yaml:"port" env-default:"5432"`
-	User     string   `yaml:"user" env-default:"postgres"`
-	Password string   `yaml:"password" env-default:"postgres"`
-	Database string   `yaml:"database" env-default:"db"`
-	Field    string   `yaml:"field" env-default:"src"`
-	Tables   []string `yaml:"tables" env-default:"table_name"`
-}
-
-type MongoConfig struct {
-	URI         string   `yaml:"URI"`
-	Name        string   `yaml:"name"`
-	Collections []string `yaml:"collections"`
+type HTTPConfig struct {
+	MaxStreamBuffer int   `yaml:"maxStreamBuffer"`
+	MaxUploadSize   int64 `yaml:"maxUploadSize"`
+	DefaultPage     int   `yaml:"defaultPage"`
+	DefaultSize     int   `yaml:"defaultSize"`
 }
 
 func MustLoad(configPath string) *Config {
