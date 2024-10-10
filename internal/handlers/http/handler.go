@@ -33,7 +33,7 @@ func (h *Handler) Start() {
 	mux.HandleFunc("/list", h.listFiles)
 	mux.HandleFunc("/upload", h.createFile)
 	mux.HandleFunc("/delete", h.deleteFile)
-	mux.HandleFunc("/stream/uploads/", h.streamImage)
+	mux.HandleFunc("/stream/uploads/", h.stream)
 	mux.Handle("/uploads/", http.StripPrefix("/uploads", http.FileServer(http.Dir(h.savePath))))
 
 	h.server = &http.Server{
@@ -54,26 +54,39 @@ func (h *Handler) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-func (h *Handler) streamImage(w http.ResponseWriter, r *http.Request) {
-	imageName := r.URL.Path[len("/stream/uploads/"):]
-	filePath := filepath.Join(h.savePath, imageName)
+func (h *Handler) stream(w http.ResponseWriter, r *http.Request) {
+	name := r.URL.Path[len("/stream/uploads/"):]
+	path := filepath.Join(h.savePath, name)
 
-	file, err := os.Open(filePath)
+	file, err := os.Open(path)
 	if err != nil {
-		http.Error(w, "File not found", http.StatusNotFound)
+		utils.ErrResponse(w, http.StatusNotFound, handlers.ErrRetrievingFile)
 		return
 	}
 	defer file.Close()
 
-	w.Header().Set("Content-Type", "image/jpeg")
+	switch filepath.Ext(name) {
+	case ".jpg", ".jpeg":
+		w.Header().Set("Content-Type", "image/jpeg")
+	case ".png":
+		w.Header().Set("Content-Type", "image/png")
+	case ".gif":
+		w.Header().Set("Content-Type", "image/gif")
+	case ".mp4":
+		w.Header().Set("Content-Type", "video/mp4")
+	case ".webm":
+		w.Header().Set("Content-Type", "video/webm")
+	default:
+		utils.ErrResponse(w, http.StatusUnsupportedMediaType, handlers.ErrUnsupportedMediaType)
+	}
 	w.Header().Set("Transfer-Encoding", "chunked")
 
-	log.Println("Streaming image: ", imageName)
+	log.Println("Streaming mediafile: ", name)
 	buffer := make([]byte, h.config.MaxStreamBuffer)
 	for {
 		n, err := file.Read(buffer)
 		if err != nil && err != io.EOF {
-			http.Error(w, "Error reading file", http.StatusInternalServerError)
+			utils.ErrResponse(w, http.StatusInternalServerError, handlers.ErrInternal)
 			return
 		}
 		if n == 0 {
