@@ -8,7 +8,7 @@ import (
 type Config struct {
 	Port     int         `yaml:"port" env-default:"8080"`
 	SavePath string      `yaml:"savePath" env-default:"uploads"`
-	HTTP     *HTTPConfig `yaml:"app"`
+	HTTP     *HTTPConfig `yaml:"http"`
 }
 
 type HTTPConfig struct {
