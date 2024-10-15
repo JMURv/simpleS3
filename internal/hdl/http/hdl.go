@@ -158,6 +158,10 @@ func (h *Handler) createFile(w http.ResponseWriter, r *http.Request) {
 
 	path := h.savePath
 	if reqPath := r.FormValue("path"); reqPath != "" {
+		if !u.IsValidPath(reqPath) {
+			utils.ErrResponse(w, http.StatusBadRequest, ErrInvalidPath)
+			return
+		}
 		path = filepath.Join(h.savePath, strings.Trim(reqPath, " /\\"))
 	}
 

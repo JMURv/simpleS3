@@ -4,7 +4,12 @@ import (
 	"github.com/JMURv/media-server/pkg/model"
 	"os"
 	"path/filepath"
+	"strings"
 )
+
+func IsValidPath(p string) bool {
+	return !strings.ContainsAny(p, `<>:"|?*`)
+}
 
 func ListFilesRecursive(path string) ([]model.FileRes, error) {
 	paths := make([]model.FileRes, 0, 50)
