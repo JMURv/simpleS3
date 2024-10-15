@@ -134,7 +134,7 @@ func (h *Handler) listFiles(w http.ResponseWriter, r *http.Request) {
 	}
 
 	totalPages := (count + size - 1) / size
-	utils.SuccessPaginatedResponse(
+	utils.SuccessDataResponse(
 		w, http.StatusOK, utils.PaginatedResponse{
 			Data:        paths[start:end],
 			Count:       count,
@@ -196,7 +196,7 @@ func (h *Handler) createFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	utils.SuccessResponse(
+	utils.SuccessDataResponse(
 		w, http.StatusCreated, &model.FileRes{
 			Path:    "/" + dstPath,
 			ModTime: time.Now().Unix(),

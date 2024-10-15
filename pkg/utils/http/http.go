@@ -7,7 +7,7 @@ import (
 )
 
 type Response struct {
-	URL any `json:"url"`
+	Msg any `json:"msg"`
 }
 
 type PaginatedResponse struct {
@@ -22,7 +22,7 @@ type ErrorResponse struct {
 	Error string `json:"error"`
 }
 
-func SuccessPaginatedResponse(w http.ResponseWriter, statusCode int, data any) {
+func SuccessDataResponse(w http.ResponseWriter, statusCode int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	json.NewEncoder(w).Encode(data)
@@ -33,7 +33,7 @@ func SuccessResponse(w http.ResponseWriter, statusCode int, data any) {
 	w.WriteHeader(statusCode)
 	json.NewEncoder(w).Encode(
 		&Response{
-			URL: data,
+			Msg: data,
 		},
 	)
 }
