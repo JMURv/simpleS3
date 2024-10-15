@@ -4,3 +4,7 @@ tasks:
     desc: Run app
     cmds:
       - "go run cmd/main.go"
+  swag:
+    desc: Generate swagger
+    cmds:
+      - swag init -g cmd/main.go

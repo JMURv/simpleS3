@@ -2,11 +2,13 @@ package http
 
 import (
 	"context"
+	_ "github.com/JMURv/media-server/docs"
 	"github.com/JMURv/media-server/pkg/config"
 	"github.com/JMURv/media-server/pkg/model"
 	u "github.com/JMURv/media-server/pkg/utils"
 	utils "github.com/JMURv/media-server/pkg/utils/http"
 	"github.com/JMURv/media-server/pkg/utils/slugify"
+	swag "github.com/swaggo/http-swagger"
 	"io"
 	"log"
 	"net/http"
@@ -33,6 +35,7 @@ func New(port string, savePath string, config *config.HTTPConfig) *Handler {
 
 func (h *Handler) Start() {
 	mux := http.NewServeMux()
+	mux.HandleFunc("/swagger/", swag.WrapHandler)
 	mux.HandleFunc("/list", h.listFiles)
 	mux.HandleFunc("/upload", h.createFile)
 	mux.HandleFunc("/delete", h.deleteFile)
@@ -57,6 +60,15 @@ func (h *Handler) Shutdown(ctx context.Context) error {
 	return nil
 }
 
+// stream streams a media file based on the given path
+// @Summary Stream a media file
+// @Description Streams a media file for the given path
+// @Param path path string true "File path"
+// @Produce  media/*
+// @Success 200
+// @Failure 404 {object} utils.ErrorResponse
+// @Failure 415 {object} utils.ErrorResponse
+// @Router /stream/uploads/{path} [get]
 func (h *Handler) stream(w http.ResponseWriter, r *http.Request) {
 	name := r.URL.Path[len("/stream/uploads/"):]
 	path := filepath.Join(h.savePath, name)
@@ -107,6 +119,15 @@ func (h *Handler) stream(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// listFiles lists all files in a directory with pagination
+// @Summary List files with pagination
+// @Description Retrieve a list of files from a directory with pagination
+// @Param path query string false "Directory path"
+// @Param page query int false "Page number" default(1)
+// @Param size query int false "Number of items per page" default(10)
+// @Success 200 {object} utils.PaginatedResponse
+// @Failure 500 {object} utils.ErrorResponse
+// @Router /list [get]
 func (h *Handler) listFiles(w http.ResponseWriter, r *http.Request) {
 	page, size := utils.ParsePaginationParams(
 		r, h.config.DefaultPage,
@@ -145,6 +166,17 @@ func (h *Handler) listFiles(w http.ResponseWriter, r *http.Request) {
 	)
 }
 
+// createFile uploads a new file to the server
+// @Summary Upload a new file
+// @Description Uploads a file to a specified path
+// @Accept multipart/form-data
+// @Param path formData string false "Directory path"
+// @Param file formData file true "File to upload"
+// @Success 201 {object} model.FileRes
+// @Failure 400 {object} utils.ErrorResponse
+// @Failure 409 {object} utils.ErrorResponse
+// @Failure 500 {object} utils.ErrorResponse
+// @Router /upload [post]
 func (h *Handler) createFile(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		utils.ErrResponse(w, http.StatusMethodNotAllowed, ErrParsingForm)
@@ -204,6 +236,15 @@ func (h *Handler) createFile(w http.ResponseWriter, r *http.Request) {
 	)
 }
 
+// deleteFile deletes a specified file
+// @Summary Delete a file
+// @Description Deletes a file from the server
+// @Param path query string true "File path"
+// @Success 204
+// @Failure 400 {object} utils.ErrorResponse
+// @Failure 404 {object} utils.ErrorResponse
+// @Failure 500 {object} utils.ErrorResponse
+// @Router /delete [delete]
 func (h *Handler) deleteFile(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
 		utils.ErrResponse(w, http.StatusMethodNotAllowed, ErrInvalidReqMethod)

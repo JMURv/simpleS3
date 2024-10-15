@@ -9,6 +9,7 @@
 - List files with pagination
 - Delete files
 - Stream media files (e.g., images, videos)
+- Generated swagger documentation avaliable at: `/swagger/index.html`
 
 ## Configuration
 

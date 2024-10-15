@@ -1,0 +1,141 @@
+definitions:
+  model.FileRes:
+    properties:
+      modTime:
+        type: integer
+      path:
+        type: string
+    type: object
+  utils.ErrorResponse:
+    properties:
+      error:
+        type: string
+    type: object
+  utils.PaginatedResponse:
+    properties:
+      count:
+        type: integer
+      current_page:
+        type: integer
+      data:
+        items:
+          $ref: '#/definitions/model.FileRes'
+        type: array
+      has_next_page:
+        type: boolean
+      total_pages:
+        type: integer
+    type: object
+info:
+  contact: {}
+paths:
+  /delete:
+    delete:
+      description: Deletes a file from the server
+      parameters:
+      - description: File path
+        in: query
+        name: path
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      summary: Delete a file
+  /list:
+    get:
+      description: Retrieve a list of files from a directory with pagination
+      parameters:
+      - description: Directory path
+        in: query
+        name: path
+        type: string
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 10
+        description: Number of items per page
+        in: query
+        name: size
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.PaginatedResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      summary: List files with pagination
+  /stream/uploads/{path}:
+    get:
+      description: Streams a media file for the given path
+      parameters:
+      - description: File path
+        in: path
+        name: path
+        required: true
+        type: string
+      produces:
+      - media/*
+      responses:
+        "200":
+          description: OK
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "415":
+          description: Unsupported Media Type
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      summary: Stream a media file
+  /upload:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Uploads a file to a specified path
+      parameters:
+      - description: Directory path
+        in: formData
+        name: path
+        type: string
+      - description: File to upload
+        in: formData
+        name: file
+        required: true
+        type: file
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/model.FileRes'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      summary: Upload a new file
+swagger: "2.0"

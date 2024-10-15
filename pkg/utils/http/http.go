@@ -2,6 +2,7 @@ package utils
 
 import (
 	"encoding/json"
+	"github.com/JMURv/media-server/pkg/model"
 	"net/http"
 	"strconv"
 )
@@ -11,11 +12,11 @@ type Response struct {
 }
 
 type PaginatedResponse struct {
-	Data        any  `json:"data"`
-	Count       int  `json:"count"`
-	TotalPages  int  `json:"total_pages"`
-	CurrentPage int  `json:"current_page"`
-	HasNextPage bool `json:"has_next_page"`
+	Data        []model.FileRes `json:"data"`
+	Count       int             `json:"count"`
+	TotalPages  int             `json:"total_pages"`
+	CurrentPage int             `json:"current_page"`
+	HasNextPage bool            `json:"has_next_page"`
 }
 
 type ErrorResponse struct {
