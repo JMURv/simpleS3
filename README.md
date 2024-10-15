@@ -125,18 +125,18 @@ Streams a media file to the client.
 ## Run in docker:
 ```shell
 docker run 
---name simpleS3 
+--name simple-s3 
 -p 8080:8080 
 -v path/to/config.yaml:/app/local.config.yaml 
 -v named_volume:/app/uploads
-jmurv/simpleS3:latest
+jmurv/simple-s3:latest
 ```
 
 ## Using in docker-compose file:
 ```yaml
-  simpleS3:
-    container_name: simpleS3
-    image: "jmurv/simpleS3:latest"
+  simple-s3:
+    container_name: simple-s3
+    image: "jmurv/simple-s3:latest"
     restart: always
     volumes:
       - ./path/to/config.yaml:/app/local.config.yaml
