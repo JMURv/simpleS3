@@ -4,12 +4,15 @@ import (
 	"context"
 	"fmt"
 	"github.com/JMURv/media-server/pkg/config"
+	u "github.com/JMURv/media-server/pkg/utils"
 	utils "github.com/JMURv/media-server/pkg/utils/http"
+	"github.com/JMURv/media-server/pkg/utils/slugify"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type Handler struct {
@@ -29,7 +32,7 @@ func New(port string, savePath string, config *config.HTTPConfig) *Handler {
 
 func (h *Handler) Start() {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/list", h.listFiles)
+	mux.HandleFunc("/list/", h.listFiles)
 	mux.HandleFunc("/upload", h.createFile)
 	mux.HandleFunc("/delete", h.deleteFile)
 	mux.HandleFunc("/stream/uploads/", h.stream)
@@ -104,34 +107,35 @@ func (h *Handler) stream(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) listFiles(w http.ResponseWriter, r *http.Request) {
-	page, size := utils.ParsePaginationParams(r, h.config.DefaultPage, h.config.DefaultSize)
-	files, err := os.ReadDir(h.savePath)
+	page, size := utils.ParsePaginationParams(
+		r, h.config.DefaultPage,
+		h.config.DefaultSize,
+	)
+
+	paths, err := u.ListFilesRecursive(
+		filepath.Join(h.savePath, strings.TrimPrefix(r.URL.Path, "/list/")),
+	)
 	if err != nil {
+		log.Println("Error reading directory: ", err)
 		utils.ErrResponse(w, http.StatusInternalServerError, ErrReadingDir)
 		return
 	}
 
-	count := len(files)
+	count := len(paths)
 	start := (page - 1) * size
-	end := start + size
 	if start > count {
 		start = count
 	}
+
+	end := start + size
 	if end > count {
 		end = count
-	}
-
-	res := make([]string, 0, len(files))
-	for _, file := range files[start:end] {
-		if !file.IsDir() {
-			res = append(res, fmt.Sprintf("/%s", filepath.Join(h.savePath, file.Name())))
-		}
 	}
 
 	totalPages := (count + size - 1) / size
 	utils.SuccessPaginatedResponse(
 		w, http.StatusOK, utils.PaginatedResponse{
-			Data:        res,
+			Data:        paths[start:end],
 			Count:       count,
 			TotalPages:  totalPages,
 			CurrentPage: page,
@@ -146,8 +150,19 @@ func (h *Handler) createFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, h.config.MaxUploadSize)
 	if err := r.ParseMultipartForm(h.config.MaxUploadSize); err != nil {
 		utils.ErrResponse(w, http.StatusBadRequest, ErrFileTooBig)
+		return
+	}
+
+	path := h.savePath
+	if reqPath := r.FormValue("path"); reqPath != "" {
+		path = filepath.Join(h.savePath, strings.Trim(reqPath, " /\\"))
+	}
+
+	if err := os.MkdirAll(path, os.ModePerm); err != nil {
+		utils.ErrResponse(w, http.StatusBadRequest, ErrCreatingDir)
 		return
 	}
 
@@ -158,7 +173,7 @@ func (h *Handler) createFile(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	dstPath := filepath.Join(h.savePath, handler.Filename)
+	dstPath := filepath.Join(path, slugify.SlugifyFile(handler.Filename))
 	if _, err := os.Stat(dstPath); err == nil {
 		utils.ErrResponse(w, http.StatusConflict, ErrAlreadyExists)
 		return
@@ -187,23 +202,20 @@ func (h *Handler) deleteFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	filename := r.URL.Query().Get("filename")
-	if filename == "" {
-		utils.ErrResponse(w, http.StatusBadRequest, ErrFilenameNotProvided)
+	path := r.URL.Query().Get("path")
+	if path == "" {
+		utils.ErrResponse(w, http.StatusBadRequest, ErrPathNotProvided)
 		return
 	}
 
-	path := filepath.Join(h.savePath, filename)
-	if _, err := os.Stat(path); os.IsNotExist(err) {
+	if err := os.Remove(path); err != nil && os.IsNotExist(err) {
 		utils.ErrResponse(w, http.StatusNotFound, err)
 		return
-	}
-
-	if err := os.Remove(path); err != nil {
+	} else if err != nil {
 		utils.ErrResponse(w, http.StatusInternalServerError, err)
 		return
 	}
 
-	log.Printf("File %s deleted successfully\n", filename)
+	log.Printf("File %s deleted successfully\n", path)
 	utils.SuccessResponse(w, http.StatusNoContent, "OK")
 }
