@@ -2,8 +2,8 @@ package http
 
 import (
 	"context"
-	"fmt"
 	"github.com/JMURv/media-server/pkg/config"
+	"github.com/JMURv/media-server/pkg/model"
 	u "github.com/JMURv/media-server/pkg/utils"
 	utils "github.com/JMURv/media-server/pkg/utils/http"
 	"github.com/JMURv/media-server/pkg/utils/slugify"
@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 type Handler struct {
@@ -32,7 +33,7 @@ func New(port string, savePath string, config *config.HTTPConfig) *Handler {
 
 func (h *Handler) Start() {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/list/", h.listFiles)
+	mux.HandleFunc("/list", h.listFiles)
 	mux.HandleFunc("/upload", h.createFile)
 	mux.HandleFunc("/delete", h.deleteFile)
 	mux.HandleFunc("/stream/uploads/", h.stream)
@@ -113,7 +114,7 @@ func (h *Handler) listFiles(w http.ResponseWriter, r *http.Request) {
 	)
 
 	paths, err := u.ListFilesRecursive(
-		filepath.Join(h.savePath, strings.TrimPrefix(r.URL.Path, "/list/")),
+		filepath.Join(h.savePath, strings.Trim(r.URL.Query().Get("path"), " /\\")),
 	)
 	if err != nil {
 		log.Println("Error reading directory: ", err)
@@ -195,9 +196,12 @@ func (h *Handler) createFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fileURL := fmt.Sprintf("/%s", dstPath)
-	log.Printf("File saved: %s\n", fileURL)
-	utils.SuccessResponse(w, http.StatusCreated, fileURL)
+	utils.SuccessResponse(
+		w, http.StatusCreated, &model.FileRes{
+			Path:    "/" + dstPath,
+			ModTime: time.Now().Unix(),
+		},
+	)
 }
 
 func (h *Handler) deleteFile(w http.ResponseWriter, r *http.Request) {
@@ -206,12 +210,11 @@ func (h *Handler) deleteFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	path := r.URL.Query().Get("path")
+	path := strings.Trim(r.URL.Query().Get("path"), " /\\")
 	if path == "" {
 		utils.ErrResponse(w, http.StatusBadRequest, ErrPathNotProvided)
 		return
 	}
-
 	if err := os.Remove(path); err != nil && os.IsNotExist(err) {
 		utils.ErrResponse(w, http.StatusNotFound, err)
 		return

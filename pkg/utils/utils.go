@@ -34,7 +34,7 @@ func ListFilesRecursive(path string) ([]model.FileRes, error) {
 
 				paths = append(
 					paths, model.FileRes{
-						Path:    filepath.Join(path, entry.Name()),
+						Path:    filepath.Join("/", path, entry.Name()),
 						ModTime: modTime,
 					},
 				)

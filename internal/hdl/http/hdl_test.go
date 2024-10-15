@@ -23,7 +23,7 @@ const port = ":8080"
 const testDir = "./test_uploads"
 
 const createEndpoint = "/upload"
-const listEndpoint = "/list/"
+const listEndpoint = "/list"
 
 func setupTestHandler() *Handler {
 	return New(
@@ -71,7 +71,7 @@ func TestStartAndShutdown(t *testing.T) {
 
 	t.Run(
 		"Server Running", func(t *testing.T) {
-			resp, err := http.Get("http://localhost" + hdl.port + "/list/")
+			resp, err := http.Get("http://localhost" + hdl.port + "/list")
 			assert.NoError(t, err)
 			assert.Equal(t, http.StatusOK, resp.StatusCode)
 		},
@@ -280,7 +280,7 @@ func TestListFiles(t *testing.T) {
 
 	t.Run(
 		"Invalid Path", func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodGet, "/list/invalid_path", nil)
+			req := httptest.NewRequest(http.MethodGet, "/list?path=invalid_path", nil)
 			rec := httptest.NewRecorder()
 
 			hdl.listFiles(rec, req)
@@ -300,7 +300,7 @@ func TestListFiles(t *testing.T) {
 			assert.Nil(t, err)
 			defer os.Remove(emptyDir)
 
-			req := httptest.NewRequest(http.MethodGet, "/list/empty", nil)
+			req := httptest.NewRequest(http.MethodGet, "/list?path=empty", nil)
 			rec := httptest.NewRecorder()
 
 			hdl.listFiles(rec, req)
@@ -340,7 +340,7 @@ func TestListFiles(t *testing.T) {
 			defer os.Remove(path3)
 
 			// Test first page of pagination
-			req := httptest.NewRequest(http.MethodGet, "/list/?page=1&size=2", nil)
+			req := httptest.NewRequest(http.MethodGet, "/list?page=1&size=2", nil)
 			rec := httptest.NewRecorder()
 
 			hdl.listFiles(rec, req)
@@ -354,7 +354,7 @@ func TestListFiles(t *testing.T) {
 			assert.NotContains(t, string(body), filename3)
 
 			// Test second page of pagination
-			req = httptest.NewRequest(http.MethodGet, "/list/?page=2&size=2", nil)
+			req = httptest.NewRequest(http.MethodGet, "/list?page=2&size=2", nil)
 			rec = httptest.NewRecorder()
 
 			hdl.listFiles(rec, req)
@@ -369,7 +369,7 @@ func TestListFiles(t *testing.T) {
 
 	t.Run(
 		"Out of Range Page", func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodGet, "/list/?page=999&size=10", nil)
+			req := httptest.NewRequest(http.MethodGet, "/list?page=999&size=10", nil)
 			rec := httptest.NewRecorder()
 
 			hdl.listFiles(rec, req)
@@ -384,7 +384,7 @@ func TestListFiles(t *testing.T) {
 
 	t.Run(
 		"Invalid Query Parameters", func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodGet, "/list/?page=invalid&size=invalid", nil)
+			req := httptest.NewRequest(http.MethodGet, "/list?page=invalid&size=invalid", nil)
 			rec := httptest.NewRecorder()
 
 			hdl.listFiles(rec, req)
