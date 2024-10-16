@@ -82,6 +82,44 @@ paths:
           schema:
             $ref: '#/definitions/utils.ErrorResponse'
       summary: List files with pagination
+  /search:
+    get:
+      description: Retrieve a list of files matching the given name from a directory
+        with pagination
+      parameters:
+      - description: Search query
+        in: query
+        name: q
+        required: true
+        type: string
+      - description: Directory path
+        in: query
+        name: path
+        type: string
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 10
+        description: Number of items per page
+        in: query
+        name: size
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.PaginatedResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      summary: Search files
   /stream/uploads/{path}:
     get:
       description: Streams a media file for the given path
