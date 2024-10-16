@@ -2,7 +2,7 @@ package utils
 
 import (
 	"encoding/json"
-	"github.com/JMURv/media-server/pkg/model"
+	"github.com/JMURv/simple-s3/pkg/model"
 	"net/http"
 	"strconv"
 )

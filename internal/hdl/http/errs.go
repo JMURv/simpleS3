@@ -7,6 +7,7 @@ var ErrAlreadyExists = errors.New("file already exists")
 var ErrInvalidReqMethod = errors.New("invalid request method")
 var ErrInternal = errors.New("internal error")
 
+var ErrMissingQuery = errors.New("missing query")
 var ErrInvalidPath = errors.New("invalid path")
 var ErrCreatingDir = errors.New("error creating directory")
 var ErrPathNotProvided = errors.New("path not provided")

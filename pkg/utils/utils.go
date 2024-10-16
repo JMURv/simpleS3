@@ -1,7 +1,7 @@
 package utils
 
 import (
-	"github.com/JMURv/media-server/pkg/model"
+	"github.com/JMURv/simple-s3/pkg/model"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +9,17 @@ import (
 
 func IsValidPath(p string) bool {
 	return !strings.ContainsAny(p, `<>:"|?*`)
+}
+
+func SearchBySubStr(p []model.FileRes, subStr string) []model.FileRes {
+	res := make([]model.FileRes, 0, len(p)/2)
+
+	for _, v := range p {
+		if strings.Contains(strings.ToLower(v.Path), strings.ToLower(subStr)) {
+			res = append(res, v)
+		}
+	}
+	return res
 }
 
 func ListFilesRecursive(path string) ([]model.FileRes, error) {

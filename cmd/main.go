@@ -3,8 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
-	handler "github.com/JMURv/media-server/internal/hdl/http"
-	cfg "github.com/JMURv/media-server/pkg/config"
+	handler "github.com/JMURv/simple-s3/internal/hdl/http"
+	cfg "github.com/JMURv/simple-s3/pkg/config"
 	"log"
 	"os"
 	"os/signal"

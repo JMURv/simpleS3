@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"github.com/JMURv/media-server/pkg/config"
-	utils "github.com/JMURv/media-server/pkg/utils/http"
+	"github.com/JMURv/simple-s3/pkg/config"
+	utils "github.com/JMURv/simple-s3/pkg/utils/http"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"io"
@@ -13,6 +13,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
@@ -87,6 +88,270 @@ func TestStartAndShutdown(t *testing.T) {
 
 			_, err = http.Get("http://localhost" + hdl.port + "/list/")
 			assert.Error(t, err)
+		},
+	)
+}
+
+func TestSearchFiles(t *testing.T) {
+	setupTestDir()
+	defer teardownTestDir()
+	h := setupTestHandler()
+
+	file, err := os.Create("./test_uploads/success-search.txt")
+	assert.Nil(t, err)
+	file.Close()
+
+	tests := []struct {
+		name           string
+		query          url.Values
+		expectedStatus int
+		expectedLen    int
+	}{
+		{
+			name:           "Missing Query",
+			query:          url.Values{},
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name: "Valid Query with Results",
+			query: url.Values{
+				"q":    []string{"success"},
+				"path": []string{""},
+			},
+			expectedStatus: http.StatusOK,
+			expectedLen:    1,
+		},
+		{
+			name: "Valid Query with No Results",
+			query: url.Values{
+				"q":    []string{"nonexistentfile"},
+				"path": []string{""},
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "Invalid path",
+			query: url.Values{
+				"q":    []string{"filename.txt"},
+				"path": []string{"&INVALID*"},
+			},
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name: "ErrReadingDir",
+			query: url.Values{
+				"q":    []string{"filename.txt"},
+				"path": []string{"INVALID"},
+			},
+			expectedStatus: http.StatusInternalServerError,
+		},
+		{
+			name: "Wrap start value",
+			query: url.Values{
+				"q":    []string{"filename.txt"},
+				"path": []string{""},
+				"page": []string{"10"},
+				"size": []string{"40"},
+			},
+			expectedStatus: http.StatusOK,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(
+			tc.name, func(t *testing.T) {
+				req := httptest.NewRequest(http.MethodGet, "/search", nil)
+				req.URL.RawQuery = tc.query.Encode()
+
+				rr := httptest.NewRecorder()
+				h.searchFiles(rr, req)
+				assert.Equal(t, tc.expectedStatus, rr.Code)
+
+				var res utils.PaginatedResponse
+				err := json.NewDecoder(rr.Body).Decode(&res)
+				assert.Nil(t, err)
+
+				assert.Equal(t, tc.expectedLen, len(res.Data))
+			},
+		)
+	}
+}
+
+func TestListFiles(t *testing.T) {
+	setupTestDir()
+	defer teardownTestDir()
+	hdl := setupTestHandler()
+
+	t.Run(
+		"Success", func(t *testing.T) {
+			filename1 := "list.txt"
+			filename2 := "list1.txt"
+			path1 := filepath.Join(testDir, filename1)
+			path2 := filepath.Join(testDir, filename2)
+
+			file, err := os.Create(path1)
+			assert.Nil(t, err)
+			file.Close()
+
+			file, err = os.Create(path2)
+			assert.Nil(t, err)
+			file.Close()
+
+			req := httptest.NewRequest(http.MethodGet, listEndpoint, nil)
+			rec := httptest.NewRecorder()
+
+			hdl.listFiles(rec, req)
+
+			res := rec.Result()
+			assert.Equal(t, http.StatusOK, res.StatusCode)
+
+			body, _ := io.ReadAll(res.Body)
+			assert.Contains(t, string(body), filename1)
+			assert.Contains(t, string(body), filename2)
+
+			err = os.Remove(path1)
+			assert.Nil(t, err)
+			err = os.Remove(path2)
+			assert.Nil(t, err)
+		},
+	)
+
+	t.Run(
+		"Non-existent Path", func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/list?path=nonexistent_path", nil)
+			rec := httptest.NewRecorder()
+
+			hdl.listFiles(rec, req)
+
+			res := rec.Result()
+			assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
+
+			body, _ := io.ReadAll(res.Body)
+			assert.Contains(t, string(body), ErrReadingDir.Error())
+		},
+	)
+
+	t.Run(
+		"Invalid Path", func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/list?path=*#@!INVALID", nil)
+			rec := httptest.NewRecorder()
+
+			hdl.listFiles(rec, req)
+
+			res := rec.Result()
+			assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+
+			body, _ := io.ReadAll(res.Body)
+			assert.Contains(t, string(body), ErrInvalidPath.Error())
+		},
+	)
+
+	t.Run(
+		"Empty Directory", func(t *testing.T) {
+			emptyDir := filepath.Join(testDir, "empty")
+			err := os.Mkdir(emptyDir, os.ModePerm)
+			assert.Nil(t, err)
+			defer os.Remove(emptyDir)
+
+			req := httptest.NewRequest(http.MethodGet, "/list?path=empty", nil)
+			rec := httptest.NewRecorder()
+
+			hdl.listFiles(rec, req)
+
+			res := rec.Result()
+			assert.Equal(t, http.StatusOK, res.StatusCode)
+
+			body, _ := io.ReadAll(res.Body)
+			assert.NotContains(t, string(body), ErrReadingDir.Error())
+			assert.Contains(t, string(body), `"data":[]`)
+		},
+	)
+
+	t.Run(
+		"Pagination", func(t *testing.T) {
+			filename1 := "list1.txt"
+			filename2 := "list2.txt"
+			filename3 := "list3.txt"
+			path1 := filepath.Join(testDir, filename1)
+			path2 := filepath.Join(testDir, filename2)
+			path3 := filepath.Join(testDir, filename3)
+
+			f, err := os.Create(path1)
+			assert.Nil(t, err)
+			defer f.Close()
+
+			f1, err := os.Create(path2)
+			assert.Nil(t, err)
+			defer f1.Close()
+
+			f2, err := os.Create(path3)
+			assert.Nil(t, err)
+			defer f2.Close()
+
+			defer os.Remove(path1)
+			defer os.Remove(path2)
+			defer os.Remove(path3)
+
+			// Test first page of pagination
+			req := httptest.NewRequest(http.MethodGet, "/list?page=1&size=2", nil)
+			rec := httptest.NewRecorder()
+
+			hdl.listFiles(rec, req)
+
+			res := rec.Result()
+			assert.Equal(t, http.StatusOK, res.StatusCode)
+
+			body, _ := io.ReadAll(res.Body)
+			assert.Contains(t, string(body), filename1)
+			assert.Contains(t, string(body), filename2)
+			assert.NotContains(t, string(body), filename3)
+
+			// Test second page of pagination
+			req = httptest.NewRequest(http.MethodGet, "/list?page=2&size=2", nil)
+			rec = httptest.NewRecorder()
+
+			hdl.listFiles(rec, req)
+
+			res = rec.Result()
+			assert.Equal(t, http.StatusOK, res.StatusCode)
+
+			body, _ = io.ReadAll(res.Body)
+			assert.Contains(t, string(body), filename3)
+		},
+	)
+
+	t.Run(
+		"Out of Range Page", func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/list?page=999&size=10", nil)
+			rec := httptest.NewRecorder()
+
+			hdl.listFiles(rec, req)
+
+			res := rec.Result()
+			assert.Equal(t, http.StatusOK, res.StatusCode)
+
+			body, _ := io.ReadAll(res.Body)
+			assert.Contains(t, string(body), `"data":[]`)
+		},
+	)
+
+	t.Run(
+		"Invalid Query Parameters", func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/list?page=invalid&size=invalid", nil)
+			rec := httptest.NewRecorder()
+
+			hdl.listFiles(rec, req)
+
+			res := rec.Result()
+			assert.Equal(t, http.StatusOK, res.StatusCode)
+
+			resp := &utils.PaginatedResponse{}
+
+			err := json.NewDecoder(res.Body).Decode(resp)
+			require.Nil(t, err)
+
+			assert.Equal(t, 1, resp.CurrentPage)
+			assert.Equal(t, false, resp.HasNextPage)
 		},
 	)
 }
@@ -237,170 +502,6 @@ func TestCreateFile(t *testing.T) {
 		},
 	)
 
-}
-
-func TestListFiles(t *testing.T) {
-	setupTestDir()
-	defer teardownTestDir()
-	hdl := setupTestHandler()
-
-	t.Run(
-		"Success", func(t *testing.T) {
-			filename1 := "list.txt"
-			filename2 := "list1.txt"
-			path1 := filepath.Join(testDir, filename1)
-			path2 := filepath.Join(testDir, filename2)
-
-			file, err := os.Create(path1)
-			assert.Nil(t, err)
-			file.Close()
-
-			file, err = os.Create(path2)
-			assert.Nil(t, err)
-			file.Close()
-
-			req := httptest.NewRequest(http.MethodGet, listEndpoint, nil)
-			rec := httptest.NewRecorder()
-
-			hdl.listFiles(rec, req)
-
-			res := rec.Result()
-			assert.Equal(t, http.StatusOK, res.StatusCode)
-
-			body, _ := io.ReadAll(res.Body)
-			assert.Contains(t, string(body), filename1)
-			assert.Contains(t, string(body), filename2)
-
-			err = os.Remove(path1)
-			assert.Nil(t, err)
-			err = os.Remove(path2)
-			assert.Nil(t, err)
-		},
-	)
-
-	t.Run(
-		"Invalid Path", func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodGet, "/list?path=invalid_path", nil)
-			rec := httptest.NewRecorder()
-
-			hdl.listFiles(rec, req)
-
-			res := rec.Result()
-			assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
-
-			body, _ := io.ReadAll(res.Body)
-			assert.Contains(t, string(body), ErrReadingDir.Error())
-		},
-	)
-
-	t.Run(
-		"Empty Directory", func(t *testing.T) {
-			emptyDir := filepath.Join(testDir, "empty")
-			err := os.Mkdir(emptyDir, os.ModePerm)
-			assert.Nil(t, err)
-			defer os.Remove(emptyDir)
-
-			req := httptest.NewRequest(http.MethodGet, "/list?path=empty", nil)
-			rec := httptest.NewRecorder()
-
-			hdl.listFiles(rec, req)
-
-			res := rec.Result()
-			assert.Equal(t, http.StatusOK, res.StatusCode)
-
-			body, _ := io.ReadAll(res.Body)
-			assert.NotContains(t, string(body), ErrReadingDir.Error())
-			assert.Contains(t, string(body), `"data":[]`)
-		},
-	)
-
-	t.Run(
-		"Pagination", func(t *testing.T) {
-			filename1 := "list1.txt"
-			filename2 := "list2.txt"
-			filename3 := "list3.txt"
-			path1 := filepath.Join(testDir, filename1)
-			path2 := filepath.Join(testDir, filename2)
-			path3 := filepath.Join(testDir, filename3)
-
-			f, err := os.Create(path1)
-			assert.Nil(t, err)
-			defer f.Close()
-
-			f1, err := os.Create(path2)
-			assert.Nil(t, err)
-			defer f1.Close()
-
-			f2, err := os.Create(path3)
-			assert.Nil(t, err)
-			defer f2.Close()
-
-			defer os.Remove(path1)
-			defer os.Remove(path2)
-			defer os.Remove(path3)
-
-			// Test first page of pagination
-			req := httptest.NewRequest(http.MethodGet, "/list?page=1&size=2", nil)
-			rec := httptest.NewRecorder()
-
-			hdl.listFiles(rec, req)
-
-			res := rec.Result()
-			assert.Equal(t, http.StatusOK, res.StatusCode)
-
-			body, _ := io.ReadAll(res.Body)
-			assert.Contains(t, string(body), filename1)
-			assert.Contains(t, string(body), filename2)
-			assert.NotContains(t, string(body), filename3)
-
-			// Test second page of pagination
-			req = httptest.NewRequest(http.MethodGet, "/list?page=2&size=2", nil)
-			rec = httptest.NewRecorder()
-
-			hdl.listFiles(rec, req)
-
-			res = rec.Result()
-			assert.Equal(t, http.StatusOK, res.StatusCode)
-
-			body, _ = io.ReadAll(res.Body)
-			assert.Contains(t, string(body), filename3)
-		},
-	)
-
-	t.Run(
-		"Out of Range Page", func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodGet, "/list?page=999&size=10", nil)
-			rec := httptest.NewRecorder()
-
-			hdl.listFiles(rec, req)
-
-			res := rec.Result()
-			assert.Equal(t, http.StatusOK, res.StatusCode)
-
-			body, _ := io.ReadAll(res.Body)
-			assert.Contains(t, string(body), `"data":[]`)
-		},
-	)
-
-	t.Run(
-		"Invalid Query Parameters", func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodGet, "/list?page=invalid&size=invalid", nil)
-			rec := httptest.NewRecorder()
-
-			hdl.listFiles(rec, req)
-
-			res := rec.Result()
-			assert.Equal(t, http.StatusOK, res.StatusCode)
-
-			resp := &utils.PaginatedResponse{}
-
-			err := json.NewDecoder(res.Body).Decode(resp)
-			require.Nil(t, err)
-
-			assert.Equal(t, 1, resp.CurrentPage)
-			assert.Equal(t, false, resp.HasNextPage)
-		},
-	)
 }
 
 func TestDeleteFile(t *testing.T) {

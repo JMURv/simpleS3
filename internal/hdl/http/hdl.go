@@ -2,12 +2,12 @@ package http
 
 import (
 	"context"
-	_ "github.com/JMURv/media-server/docs"
-	"github.com/JMURv/media-server/pkg/config"
-	"github.com/JMURv/media-server/pkg/model"
-	u "github.com/JMURv/media-server/pkg/utils"
-	utils "github.com/JMURv/media-server/pkg/utils/http"
-	"github.com/JMURv/media-server/pkg/utils/slugify"
+	_ "github.com/JMURv/simple-s3/docs"
+	"github.com/JMURv/simple-s3/pkg/config"
+	"github.com/JMURv/simple-s3/pkg/model"
+	u "github.com/JMURv/simple-s3/pkg/utils"
+	utils "github.com/JMURv/simple-s3/pkg/utils/http"
+	"github.com/JMURv/simple-s3/pkg/utils/slugify"
 	swag "github.com/swaggo/http-swagger"
 	"io"
 	"log"
@@ -36,7 +36,9 @@ func New(port string, savePath string, config *config.HTTPConfig) *Handler {
 func (h *Handler) Start() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/swagger/", swag.WrapHandler)
+
 	mux.HandleFunc("/list", h.listFiles)
+	mux.HandleFunc("/search", h.searchFiles)
 	mux.HandleFunc("/upload", h.createFile)
 	mux.HandleFunc("/delete", h.deleteFile)
 	mux.HandleFunc("/stream/uploads/", h.stream)
@@ -119,29 +121,44 @@ func (h *Handler) stream(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// listFiles lists all files in a directory with pagination
-// @Summary List files with pagination
-// @Description Retrieve a list of files from a directory with pagination
+// searchFiles search files by name in a directory with pagination
+// @Summary Search files
+// @Description Retrieve a list of files matching the given name from a directory with pagination
+// @Param q query string true "Search query"
 // @Param path query string false "Directory path"
 // @Param page query int false "Page number" default(1)
 // @Param size query int false "Number of items per page" default(10)
 // @Success 200 {object} utils.PaginatedResponse
+// @Failure 400 {object} utils.ErrorResponse
 // @Failure 500 {object} utils.ErrorResponse
-// @Router /list [get]
-func (h *Handler) listFiles(w http.ResponseWriter, r *http.Request) {
-	page, size := utils.ParsePaginationParams(
-		r, h.config.DefaultPage,
-		h.config.DefaultSize,
-	)
+// @Router /search [get]
+func (h *Handler) searchFiles(w http.ResponseWriter, r *http.Request) {
+	q := strings.Trim(r.URL.Query().Get("q"), " /\\")
+	if q == "" {
+		utils.ErrResponse(w, http.StatusBadRequest, ErrMissingQuery)
+		return
+	}
+
+	path := strings.Trim(r.URL.Query().Get("path"), " /\\")
+	if !u.IsValidPath(path) {
+		utils.ErrResponse(w, http.StatusBadRequest, ErrInvalidPath)
+		return
+	}
 
 	paths, err := u.ListFilesRecursive(
-		filepath.Join(h.savePath, strings.Trim(r.URL.Query().Get("path"), " /\\")),
+		filepath.Join(h.savePath, path),
 	)
 	if err != nil {
 		log.Println("Error reading directory: ", err)
 		utils.ErrResponse(w, http.StatusInternalServerError, ErrReadingDir)
 		return
 	}
+
+	paths = u.SearchBySubStr(paths, q)
+	page, size := utils.ParsePaginationParams(
+		r, h.config.DefaultPage,
+		h.config.DefaultSize,
+	)
 
 	count := len(paths)
 	start := (page - 1) * size
@@ -158,6 +175,59 @@ func (h *Handler) listFiles(w http.ResponseWriter, r *http.Request) {
 	utils.SuccessDataResponse(
 		w, http.StatusOK, utils.PaginatedResponse{
 			Data:        paths[start:end],
+			Count:       count,
+			TotalPages:  totalPages,
+			CurrentPage: page,
+			HasNextPage: page < totalPages,
+		},
+	)
+}
+
+// listFiles lists all files in a directory with pagination
+// @Summary List files with pagination
+// @Description Retrieve a list of files from a directory with pagination
+// @Param path query string false "Directory path"
+// @Param page query int false "Page number" default(1)
+// @Param size query int false "Number of items per page" default(10)
+// @Success 200 {object} utils.PaginatedResponse
+// @Failure 500 {object} utils.ErrorResponse
+// @Router /list [get]
+func (h *Handler) listFiles(w http.ResponseWriter, r *http.Request) {
+	page, size := utils.ParsePaginationParams(
+		r, h.config.DefaultPage,
+		h.config.DefaultSize,
+	)
+
+	path := strings.Trim(r.URL.Query().Get("path"), " /\\")
+	if !u.IsValidPath(path) {
+		utils.ErrResponse(w, http.StatusBadRequest, ErrInvalidPath)
+		return
+	}
+
+	files, err := u.ListFilesRecursive(
+		filepath.Join(h.savePath, path),
+	)
+	if err != nil {
+		log.Println("Error reading directory: ", err)
+		utils.ErrResponse(w, http.StatusInternalServerError, ErrReadingDir)
+		return
+	}
+
+	count := len(files)
+	start := (page - 1) * size
+	if start > count {
+		start = count
+	}
+
+	end := start + size
+	if end > count {
+		end = count
+	}
+
+	totalPages := (count + size - 1) / size
+	utils.SuccessDataResponse(
+		w, http.StatusOK, utils.PaginatedResponse{
+			Data:        files[start:end],
 			Count:       count,
 			TotalPages:  totalPages,
 			CurrentPage: page,

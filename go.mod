@@ -1,4 +1,4 @@
-module github.com/JMURv/media-server
+module github.com/JMURv/simple-s3
 
 go 1.23.1
 
