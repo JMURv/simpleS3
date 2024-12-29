@@ -281,7 +281,7 @@ func (h *Handler) createFile(w http.ResponseWriter, r *http.Request) {
 	defer file.Close()
 
 	dstPath := filepath.Join(path, slugify.Filename(handler.Filename))
-	if _, err := os.Stat(dstPath); err == nil {
+	if _, err = os.Stat(dstPath); err == nil {
 		utils.ErrResponse(w, http.StatusConflict, ErrAlreadyExists)
 		return
 	}
@@ -293,7 +293,7 @@ func (h *Handler) createFile(w http.ResponseWriter, r *http.Request) {
 	}
 	defer dst.Close()
 
-	if _, err := io.Copy(dst, file); err != nil {
+	if _, err = io.Copy(dst, file); err != nil {
 		utils.ErrResponse(w, http.StatusInternalServerError, ErrInternal)
 		return
 	}
