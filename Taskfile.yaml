@@ -8,3 +8,10 @@ tasks:
     desc: Generate swagger
     cmds:
       - swag init -g cmd/main.go
+
+  t:
+    desc: Run tests
+    cmds:
+      - "go test ./internal/hdl/http"
+      - "go test -coverprofile=cov.out ./internal/hdl/http && go tool cover -func=cov.out"
+      - "go test ./pkg/utils"

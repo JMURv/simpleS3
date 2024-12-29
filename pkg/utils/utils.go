@@ -34,7 +34,7 @@ func ListFilesRecursive(path string) ([]model.FileRes, error) {
 
 		for _, entry := range dirs {
 			if entry.IsDir() {
-				if err := collectFiles(filepath.Join(path, entry.Name())); err != nil {
+				if err = collectFiles(filepath.Join(path, entry.Name())); err != nil {
 					return err
 				}
 			} else {

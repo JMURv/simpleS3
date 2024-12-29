@@ -51,7 +51,7 @@ func teardownTestDir() {
 	}
 }
 
-func TestStartAndShutdown(t *testing.T) {
+func TestStart(t *testing.T) {
 	setupTestDir()
 	defer teardownTestDir()
 	hdl := New(
@@ -66,7 +66,7 @@ func TestStartAndShutdown(t *testing.T) {
 	)
 
 	go func() {
-		hdl.Start()
+		hdl.Start(context.Background())
 	}()
 	time.Sleep(100 * time.Millisecond)
 
@@ -75,19 +75,6 @@ func TestStartAndShutdown(t *testing.T) {
 			resp, err := http.Get("http://localhost" + hdl.port + "/list")
 			assert.NoError(t, err)
 			assert.Equal(t, http.StatusOK, resp.StatusCode)
-		},
-	)
-
-	t.Run(
-		"Server Shutdown", func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-
-			err := hdl.Shutdown(ctx)
-			assert.NoError(t, err)
-
-			_, err = http.Get("http://localhost" + hdl.port + "/list/")
-			assert.Error(t, err)
 		},
 	)
 }

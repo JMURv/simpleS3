@@ -34,7 +34,7 @@ func splitFileNameAndExt(s string) (string, string) {
 	return name, strings.TrimPrefix(ext, ".")
 }
 
-func SlugifyFile(s string) string {
+func Filename(s string) string {
 	s = transliterate(strings.TrimSpace(s))
 
 	name, ext := splitFileNameAndExt(s)

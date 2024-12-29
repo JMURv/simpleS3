@@ -33,7 +33,7 @@ func New(port string, savePath string, config *config.HTTPConfig) *Handler {
 	}
 }
 
-func (h *Handler) Start() {
+func (h *Handler) Start(ctx context.Context) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/swagger/", swag.WrapHandler)
 
@@ -49,17 +49,17 @@ func (h *Handler) Start() {
 		Handler: mux,
 	}
 
+	go func() {
+		<-ctx.Done()
+		if err := h.server.Shutdown(ctx); err != nil {
+			log.Fatalf("Error shutting down server: %s\n", err)
+		}
+	}()
+
 	log.Printf("Server is running on port %v\n", h.port)
 	if err := h.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("Error starting server: %s\n", err)
 	}
-}
-
-func (h *Handler) Shutdown(ctx context.Context) error {
-	if err := h.server.Shutdown(ctx); err != nil {
-		return err
-	}
-	return nil
 }
 
 // stream streams a media file based on the given path
@@ -280,7 +280,7 @@ func (h *Handler) createFile(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	dstPath := filepath.Join(path, slugify.SlugifyFile(handler.Filename))
+	dstPath := filepath.Join(path, slugify.Filename(handler.Filename))
 	if _, err := os.Stat(dstPath); err == nil {
 		utils.ErrResponse(w, http.StatusConflict, ErrAlreadyExists)
 		return

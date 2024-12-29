@@ -13,18 +13,13 @@ import (
 
 const configPath = "local.config.yaml"
 
-func handleGracefulShutdown(ctx context.Context, cancel context.CancelFunc, h *handler.Handler) {
+func gracefulShutdown(cancel context.CancelFunc) {
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 	<-ch
 
 	log.Println("Shutting down gracefully...")
-
 	cancel()
-	if err := h.Shutdown(ctx); err != nil {
-		log.Fatalf("Error shutting down server: %s\n", err)
-	}
-
 	os.Exit(0)
 }
 
@@ -47,6 +42,6 @@ func main() {
 	}
 
 	h := handler.New(fmt.Sprintf(":%v", conf.Port), conf.SavePath, conf.HTTP)
-	go handleGracefulShutdown(ctx, cancel, h)
-	h.Start()
+	go gracefulShutdown(cancel)
+	h.Start(ctx)
 }
